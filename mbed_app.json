@@ -1,38 +1,42 @@
-
  {
+     "macros": [
+        "MBED_CONF_APP_MAIN_STACK_SIZE=6000",
+        "MBED_CONF_APP_THREAD_STACK_SIZE=6000",
+        "DEVICE_STDIO_MESSAGES=1"
+    ],
     "name": "emw3080b",
     "config": {
         "wifi-spi-interface": {
             "help": "SPI interface if true / UART interface if false",
-            "value": "NC"
+            "value": true
         },
         "wifi-miso": {
             "help": "SPI-MISO connection to external device",
-            "value": "NC"
+            "value": "PD_3"
         },
         "wifi-mosi": {
             "help": "SPI-MOSI connection to external device",
-            "value": "NC"
+            "value": "PD_4"
         },
         "wifi-sclk": {
             "help": "SPI-CLOCK connection to external device",
-            "value": "NC"
+            "value": "PD_1"
         },
         "wifi-nss": {
             "help": "SPI chip select of external device",
-            "value": "NC"
+            "value": "PB_12"
         },
         "wifi-notify": {
             "help": "EMW3080B notify from externam device",
-            "value": "NC"
+            "value": "PD_14"
         },
         "wifi-flow": {
             "help": "EMW3080B flow from externam device",
-            "value": "NC"
+            "value": "PG_15"
         },
         "wifi-reset": {
             "help": "EMW3080B reset to external device",
-            "value": "NC"
+            "value": "PF_15"
         },
         "wifi-tx": {
             "help": "EMW3080B uart tx to external device",
@@ -48,7 +52,7 @@
         },
         "provide-default": {
             "help": "Provide default WifiInterface. [true/false]",
-            "value": false
+            "value": true
         }
     },
     "target_overrides": {
