@@ -73,7 +73,7 @@
             "target.printf_lib":"std",
             "platform.stdio-baud-rate": 115200,
             "platform.stdio-convert-newlines": true
-            
+                        
         }
     }
 }
