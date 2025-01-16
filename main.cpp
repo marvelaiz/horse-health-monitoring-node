@@ -5,12 +5,9 @@
 #define BLINKING_RATE     1000ms
 #include "EMW3080BInterface.h"
 #include "TCPSocket.h"
-// #include "TLSSocketWrapper.h"
 #include "MQTTmbed.h"
 #include "MQTTClient.h"
-#include "mbed_trace.h"
-#include "MQTTPacket.h"
-// #include "MQTTNetwork.h"
+
 
 
   
@@ -30,10 +27,10 @@
 #define EMW3080B_WIFI_TX                                            NC 
 
 //MQTT
-#define MQTT_HOST               "srv-iot.diatel.upm.es"
-#define MQTT_PORT               8883
-// #define MQTT_HOST               "test.mosquitto.org"
-// #define MQTT_PORT               1883
+// #define MQTT_HOST               "srv-iot.diatel.upm.es"
+// #define MQTT_PORT               8883
+#define MQTT_HOST               "test.mosquitto.org"
+#define MQTT_PORT               1883
 
 #define MQTT_TOPIC              "v1/devices/me/telemetry"
 #define MQTT_TOKEN              "zww36ezetbn7wq6b7oro"  //Send it throught username
@@ -97,6 +94,9 @@ p_sockAddr->set_port(port);
 };
 
 
+
+
+
 int main()
 {
     // Initialise the digital pin LED1 as an output
@@ -158,53 +158,20 @@ int main()
     // printf("RSSI: %d\n\n", wifi.get_rssi());
 
 
-//     // Connect to ThingsBoard ----------------------------------------------
-
+// Connect to ThingsBoard ----------------------------------------------
 
 MQTTNetwork network(&wifi);
-MQTT::Client<MQTTNetwork, Countdown> client(network);
 
-MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
-  data.MQTTVersion = 3;
-//   data.clientID.cstring = "63b4ce30-cf7d-11ef-bab7-d10af52420c3";
-//   data.username.cstring = "zww36ezetbn7wq6b7oro";
-//   int rc;
-  
-  
+    TLSSocket *socket = new TLSSocket; // Allocate on heap to avoid stack overflow.
+    MQTT::Client<MQTTNetwork, Countdown> client(&network);
 
 char assess_token[] = "zww36ezetbn7wq6b7oro";
-
 MQTTPacket_connectData conn_data = MQTTPacket_connectData_initializer;
 conn_data.username.cstring = assess_token;
-
 if (network.connect(MQTT_HOST, MQTT_PORT) < 0) {
     printf("failed to connect to " MQTT_HOST  "\n");
     return -1;
 }
-
-// // Wrap the TCP into TLS object
-//  TLSSocketWrapper* tls = new TLSSocketWrapper(network.socket, MQTT_HOST, TLSSocketWrapper::TRANSPORT_CLOSE);
-
-// // Initiate TLS handshake
-// tls->connect(*(network.p_sockAddr));
-// network.tls=tls;
-
-// connection.send("STARTTLS\r\n", 10)
-
-// if ((rc = client.connect(data)) != 0) {
-//     mbedtls_printf("rc from MQTT connect is %d\n", rc);
-//     //return -1;
-//   }
-
-if (client.connect(conn_data) < 0) {
-    printf("failed to send MQTT connect message\n");
-    return -1;
-}
-
-printf("successfully connect!\n");
-
-client.disconnect();
-wifi.disconnect();
 
 printf("\ndone\n");
 
