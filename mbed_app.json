@@ -1,8 +1,9 @@
  {
      "macros": [
-        "MBED_CONF_APP_MAIN_STACK_SIZE=6000",
-        "MBED_CONF_APP_THREAD_STACK_SIZE=6000",
-        "DEVICE_STDIO_MESSAGES=1"
+        "MBED_CONF_APP_MAIN_STACK_SIZE=20000",
+        "MBED_CONF_APP_THREAD_STACK_SIZE=20000",
+        "DEVICE_STDIO_MESSAGES=1",
+        "MBEDTLS_SHA1_C=1"
     ],
     "name": "emw3080b",
     "config": {
@@ -72,7 +73,8 @@
             
             "target.printf_lib":"std",
             "platform.stdio-baud-rate": 115200,
-            "platform.stdio-convert-newlines": true
+            "platform.stdio-convert-newlines": true,
+            "mbed-trace.enable": 1
                         
         }
     }
