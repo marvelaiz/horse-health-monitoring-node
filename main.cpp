@@ -1,16 +1,20 @@
 #include "mbed.h"
+#include <cstdint>
+#include <cstdio>
 
 // Blinking rate in milliseconds
 #define BLINKING_RATE 1000ms
 #include "EMW3080BInterface.h"
+#include "HTS221Sensor.h"
 #include "MQTTClient.h"
 #include "MQTTPacket.h"
 #include "MQTTmbed.h"
 #include "TCPSocket.h"
+#include "max30102.h"
 #include "mbed_trace.h"
 
 
-#define HORSE_INSIDE_FENCING
+// #define HORSE_INSIDE_FENCING
 
 #ifdef HORSE_INSIDE_FENCING
 #define GPS_SIMULATED_LATITUDE_INSIDE_FENCING 40.622
@@ -18,13 +22,12 @@
 
 #define GPS_SIMULATED_LATITUDE GPS_SIMULATED_LATITUDE_INSIDE_FENCING
 #define GPS_SIMULATED_LONGITUDE GPS_SIMULATED_LONGITUDE_INSIDE_FENCING
-#else 
-#define  GPS_SIMULATED_LATITUDE_OUTSIDE_FENCING 40.638389
-#define  GPS_SIMULATED_LONGITUDE_OUTSIDE_FENCING -3.903117
+#else
+#define GPS_SIMULATED_LATITUDE_OUTSIDE_FENCING 40.638389
+#define GPS_SIMULATED_LONGITUDE_OUTSIDE_FENCING -3.903117
 #define GPS_SIMULATED_LATITUDE GPS_SIMULATED_LATITUDE_OUTSIDE_FENCING
 #define GPS_SIMULATED_LONGITUDE GPS_SIMULATED_LONGITUDE_OUTSIDE_FENCING
-#endif 
-
+#endif
 
 #define MQTT_PUBLISH_FREQ 10000ms
 #define MEA_FREQ 5000ms
@@ -40,7 +43,9 @@ void trigger_mqtt_pub_cb() { flag_tigger_mqtt_pub = true; }
 // I2C Configuration
 I2C i2c(PH_5, PH_4);          // SDA, SCL pins (adjust based on your board)
 I2C i2c_external(PB_9, PB_8); // SDA, SCL pins (adjust based on your board)
+
 const int ISM330DHCX_I2C_ADDR = 0b1101011 << 1; // 7-bit address shifted for I2C
+const int SEN0344_ADDR = 0x57<< 1;
 const int MAX30102_I2C_ADDR = 0x57
                               << 1; // 7-bit I2C address shifted for write/read
 
@@ -60,6 +65,67 @@ const int MAX30102_I2C_ADDR = 0x57
 #define REG_FIFO_RD_PTR 0x06
 #define REG_FIFO_DATA 0x07
 #define REG_FIFO_OVF_COUNTER 0x05
+
+#define REG_SEN0344_START_STOP 0x20
+#define REG_SEN0344_HR_SPO2 0x0C
+#define REG_SEN0344_TEMP 0x14
+
+float SPO2;
+float HR;
+
+bool sen0344_init() {
+  char config[3];
+SPO2=0;
+HR=0;
+  // Reset the sensor
+  config[0] = REG_SEN0344_START_STOP;
+  config[1] = 0;
+  config[2] = 1; // Start meassure
+  if (i2c.write(SEN0344_ADDR, config, 3) != 0) {
+
+    printf("Failed to write register address 0x%02X\n", SEN0344_ADDR);
+     return false;
+  }
+  return true;
+}
+
+
+bool sen0344_deinit() {
+  char config[3];
+
+  // Reset the sensor
+  config[0] = REG_SEN0344_START_STOP;
+  config[1] = 0;
+  config[2] = 2; // Start meassure
+  if (i2c.write(SEN0344_ADDR, config, 3) != 0) {
+
+    printf("Failed to write register address 0x%02X\n", SEN0344_ADDR);
+     return false;
+  }
+  return true;
+}
+
+
+
+void sen0344_get_hr_spo2() {
+char config[1];
+  char read_buffer[8];
+  
+
+  // Reset the sensor
+  config[0] = REG_SEN0344_HR_SPO2;
+
+
+  // Read 8 bytes from the data
+  i2c.write(SEN0344_ADDR, config, 1, true);
+  i2c.read(SEN0344_ADDR, read_buffer, 8);
+
+  SPO2 = (float)((uint8_t)read_buffer[0]);
+
+   HR = ((uint32_t)read_buffer[2] << 24) | ((uint32_t)read_buffer[3] << 16) | ((uint32_t)read_buffer[4] << 8) | ((uint32_t)read_buffer[5]);
+ 
+}
+
 
 // Initialization function
 void init_max30102() {
@@ -303,8 +369,22 @@ void init_tickers() {
                           // and the interval (2 seconds)
 }
 
+
+
 int main() {
 
+  //   MAX30102 max30102(PB_9, PB_8);
+  if(sen0344_init()){
+      printf("SEN0344 initialized\n");
+  }else{
+      printf("SEN0345 error initializing");
+  }
+
+DigitalOut buzzer(PG_3);
+buzzer=1;
+
+ThisThread::sleep_for(2000);
+buzzer=0;
   
 
   // INIT SENSORS
@@ -313,7 +393,16 @@ int main() {
   init_accelerometer();
 
   // Initialize the MAX30102
-  init_max30102();
+  // Initialize the MAX30102
+  // max30102.initialize();
+  uint8_t id;
+  DevI2C i2c_2(PH_5, PH_4);
+  HTS221Sensor hum_temp(&i2c_2);
+
+  hum_temp.init(NULL);
+  hum_temp.enable();
+  hum_temp.read_id(&id);
+  printf("HTS221  humidity & temperature sensor = 0x%X\r\n", id);
 
   // float heart_rate, spo2;
 
@@ -424,11 +513,10 @@ int main() {
   char msg[1000];
   // Define the fields and their corresponding values
   float temperature = 38.2;
-  int hr = 80;
+  int hr = 38;
+  float heart_rate = 80.0;
   float spo2 = 97.5;
   float x = 10, y = 20, z = 30;
-
-  
 
   float lat = GPS_SIMULATED_LATITUDE, lon = GPS_SIMULATED_LONGITUDE;
 
@@ -459,27 +547,50 @@ int main() {
   // wifi.disconnect();
   printf("\ndone\n");
 
+  const int NUM_SAMPLES = 100; // Number of samples for processing
+  uint32_t red[NUM_SAMPLES], ir[NUM_SAMPLES];
+
   init_tickers();
 
   while (true) {
 
     // if (flag_trigger_measurements) {
-        flag_trigger_measurements=false;
-      // 3D Gyroscope
+    flag_trigger_measurements = false;
+    // 3D Gyroscope
 
-      // Create the JSON message using snprintf
-      read_acceleration(x, y, z);
-      // Read heart rate and SpO2
-      // read_heart_rate_and_spo2(hr, spo2);
-      x = x * 9.8;
-      y = y * 9.8;
-      z = z * 9.8;
+    // Collect NUM_SAMPLES from the sensor
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+      // max30102.readFIFO(red[i], ir[i]);
+      ThisThread::sleep_for(10ms); // 100Hz sampling
+    }
+
+    // Calculate Heart Rate and SpO2
+    // max30102.calculateHeartRateAndSpO2(red, ir, NUM_SAMPLES, heart_rate,
+    // spo2);
+
+    // Create the JSON message using snprintf
+    read_acceleration(x, y, z);
+    // Read heart rate and SpO2
+    // read_heart_rate_and_spo2(hr, spo2);
+    x = x * 9.8;
+    y = y * 9.8;
+    z = z * 9.8;
+    float hum;
+    hum_temp.get_temperature(&temperature);
+    hum_temp.get_humidity(&hum);
+    temperature = 37.8;
+    // temperature=(temperature -32) * 5/9 -5;
+    sen0344_get_hr_spo2();
+  printf("HR: %0.3f\n", HR);
+   printf("SPO2: %0.3f\n", SPO2);
+    printf("HTS221:  [temp] %.2f C, [hum] %.2f \r\n", temperature, hum);
+
     // }
 
     // if(flag_trigger_measurements){
-        flag_trigger_measurements=false;
+    flag_trigger_measurements = false;
 
-        int n = snprintf(msg, sizeof(msg),
+    int n = snprintf(msg, sizeof(msg),
                      "{\"temperature\":%f,\"HR\":%d,\"oximetry\":%f,\"x\":"
                      "%.2f,\"y\":%.2f,\"z\":%.2f,\"lat\":%f,\"long\":%f}",
                      temperature, hr, spo2, x, y, z, lat, lon);
@@ -495,7 +606,7 @@ int main() {
     led = !led;
 
     // }
-    
+
     ThisThread::sleep_for(BLINKING_RATE);
   }
 }
