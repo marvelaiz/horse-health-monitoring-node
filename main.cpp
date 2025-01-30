@@ -13,7 +13,6 @@
 #include "max30102.h"
 #include "mbed_trace.h"
 
-
 // #define HORSE_INSIDE_FENCING
 
 #ifdef HORSE_INSIDE_FENCING
@@ -45,7 +44,7 @@ I2C i2c(PH_5, PH_4);          // SDA, SCL pins (adjust based on your board)
 I2C i2c_external(PB_9, PB_8); // SDA, SCL pins (adjust based on your board)
 
 const int ISM330DHCX_I2C_ADDR = 0b1101011 << 1; // 7-bit address shifted for I2C
-const int SEN0344_ADDR = 0x57<< 1;
+const int SEN0344_ADDR = 0x57 << 1;
 const int MAX30102_I2C_ADDR = 0x57
                               << 1; // 7-bit I2C address shifted for write/read
 
@@ -55,6 +54,26 @@ const int MAX30102_I2C_ADDR = 0x57
 // Data Buffers
 // std::vector<uint32_t> red_buffer(BUFFER_SIZE, 0);
 // std::vector<uint32_t> ir_buffer(BUFFER_SIZE, 0);
+
+// BUZZER
+PwmOut buzzer(PE_5);
+
+void buzzer_turn_on() {
+
+  buzzer.period(1.0 / 1000.0); // Set frequency to 1kHz
+  buzzer.write(0.5);           // 50% duty cycle
+
+  ThisThread::sleep_for(500ms); // Play tone for 500ms
+
+  buzzer.write(0.0); // Turn off buzzer
+
+  ThisThread::sleep_for(500ms); // Wait for 500ms before repeating
+}
+
+void buzzer_turn_off() {
+
+  buzzer.write(0.0); // Turn off buzzer
+}
 
 // MAX30102 Register Definitions
 #define REG_MODE_CONFIG 0x09
@@ -75,8 +94,8 @@ float HR;
 
 bool sen0344_init() {
   char config[3];
-SPO2=0;
-HR=0;
+  SPO2 = 0;
+  HR = 0;
   // Reset the sensor
   config[0] = REG_SEN0344_START_STOP;
   config[1] = 0;
@@ -84,11 +103,10 @@ HR=0;
   if (i2c.write(SEN0344_ADDR, config, 3) != 0) {
 
     printf("Failed to write register address 0x%02X\n", SEN0344_ADDR);
-     return false;
+    return false;
   }
   return true;
 }
-
 
 bool sen0344_deinit() {
   char config[3];
@@ -100,21 +118,17 @@ bool sen0344_deinit() {
   if (i2c.write(SEN0344_ADDR, config, 3) != 0) {
 
     printf("Failed to write register address 0x%02X\n", SEN0344_ADDR);
-     return false;
+    return false;
   }
   return true;
 }
 
-
-
 void sen0344_get_hr_spo2() {
-char config[1];
+  char config[1];
   char read_buffer[8];
-  
 
   // Reset the sensor
   config[0] = REG_SEN0344_HR_SPO2;
-
 
   // Read 8 bytes from the data
   i2c.write(SEN0344_ADDR, config, 1, true);
@@ -122,71 +136,8 @@ char config[1];
 
   SPO2 = (float)((uint8_t)read_buffer[0]);
 
-   HR = ((uint32_t)read_buffer[2] << 24) | ((uint32_t)read_buffer[3] << 16) | ((uint32_t)read_buffer[4] << 8) | ((uint32_t)read_buffer[5]);
- 
-}
-
-
-// Initialization function
-void init_max30102() {
-  char config[2];
-
-  // Reset the sensor
-  config[0] = REG_MODE_CONFIG;
-  config[1] = 0x40; // Reset bit
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-  ThisThread::sleep_for(100ms);
-
-  // Configure SpO2 mode
-  config[0] = REG_MODE_CONFIG;
-  config[1] = 0x03; // SpO2 mode
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  // Set LED pulse amplitude for RED and IR
-  config[0] = REG_LED1_PA;
-  config[1] = 0x24; // RED LED current
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  config[0] = REG_LED2_PA;
-  config[1] = 0x24; // IR LED current
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  // Configure FIFO
-  config[0] = REG_SPO2_CONFIG;
-  config[1] = 0x27; // SpO2 ADC range = 4096 nA, 100 Hz, 18-bit resolution
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  config[0] = REG_FIFO_WR_PTR; // Clear FIFO pointers
-  config[1] = 0x00;
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  config[0] = REG_FIFO_RD_PTR;
-  config[1] = 0x00;
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-
-  config[0] = REG_FIFO_OVF_COUNTER;
-  config[1] = 0x00;
-  i2c.write(MAX30102_I2C_ADDR, config, 2);
-}
-
-// Function to read heart rate and SpO2
-void read_heart_rate_and_spo2(float &heart_rate, float &spo2) {
-  char reg = REG_FIFO_DATA;
-  char data[6];
-  uint32_t red_val = 0, ir_val = 0;
-
-  // Read 6 bytes from the FIFO data register
-  i2c.write(MAX30102_I2C_ADDR, &reg, 1, true);
-  i2c.read(MAX30102_I2C_ADDR, data, 6);
-
-  // Combine the 3 bytes for each channel
-  red_val = (data[0] << 16) | (data[1] << 8) | data[2];
-  ir_val = (data[3] << 16) | (data[4] << 8) | data[5];
-
-  // Placeholder algorithm to calculate bpm and SpO2 from raw data
-  // In real implementations, you would use a proper algorithm/library
-  heart_rate = (ir_val % 100) + 60; // Mock calculation
-  spo2 = (red_val % 10) + 95;       // Mock calculation
+  HR = ((uint32_t)read_buffer[2] << 24) | ((uint32_t)read_buffer[3] << 16) |
+       ((uint32_t)read_buffer[4] << 8) | ((uint32_t)read_buffer[5]);
 }
 
 // Register Addresses
@@ -280,6 +231,7 @@ static const char cert[] =
 #define MAX_MQTT_PACKET_SIZE 1000
 
 #define MQTT_TOPIC "v1/devices/me/telemetry"
+#define MQTT_SUB_TOPIC "v1/devices/me/attributes"
 #define MQTT_TOKEN "zww36ezetbn7wq6b7oro" // Send it throught username
 
 // Change it with your WiFi network name
@@ -369,23 +321,27 @@ void init_tickers() {
                           // and the interval (2 seconds)
 }
 
-
+void messageArrived(MQTT::MessageData& md)
+{
+    MQTT::Message &message = md.message;
+    printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\r\n", message.qos, message.retained, message.dup, message.id);
+    printf("Payload %.*s\r\n", message.payloadlen, (char*)message.payload);
+}
 
 int main() {
 
   //   MAX30102 max30102(PB_9, PB_8);
-  if(sen0344_init()){
-      printf("SEN0344 initialized\n");
-  }else{
-      printf("SEN0345 error initializing");
+  if (sen0344_init()) {
+    printf("SEN0344 initialized\n");
+  } else {
+    printf("SEN0345 error initializing");
   }
 
-DigitalOut buzzer(PG_3);
-buzzer=1;
+  DigitalOut buzzer(PG_3);
+  buzzer = 1;
 
-ThisThread::sleep_for(2000);
-buzzer=0;
-  
+  ThisThread::sleep_for(2000);
+  buzzer = 0;
 
   // INIT SENSORS
 
@@ -510,6 +466,21 @@ buzzer=0;
     printf("Connected OK");
   }
 
+
+
+//Subscrite to topic in order to turn on the buzzer when needed
+result = client.subscribe(MQTT_SUB_TOPIC, MQTT::QOS2, messageArrived);
+
+if (result != 0) {
+    printf("MQTT subscribe is %d\r\n", result);
+  } else {
+    printf("MQTT subscribe is OK");
+  }
+//         logMessage("rc from MQTT subscribe is %d\r\n", rc);
+// void buzzer_turn_on();
+
+  //Preparation for sensor meassurements
+
   char msg[1000];
   // Define the fields and their corresponding values
   float temperature = 38.2;
@@ -581,8 +552,8 @@ buzzer=0;
     temperature = 37.8;
     // temperature=(temperature -32) * 5/9 -5;
     sen0344_get_hr_spo2();
-  printf("HR: %0.3f\n", HR);
-   printf("SPO2: %0.3f\n", SPO2);
+    printf("HR: %0.3f\n", HR);
+    printf("SPO2: %0.3f\n", SPO2);
     printf("HTS221:  [temp] %.2f C, [hum] %.2f \r\n", temperature, hum);
 
     // }
