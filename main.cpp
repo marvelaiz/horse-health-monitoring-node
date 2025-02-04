@@ -12,8 +12,12 @@
 #include "TCPSocket.h"
 #include "max30102.h"
 #include "mbed_trace.h"
+#include <string.h>
+#include "cJSON.h"
 
 // #define HORSE_INSIDE_FENCING
+
+#define SOUND_INTERVAL_ON  2//In seconds
 
 #ifdef HORSE_INSIDE_FENCING
 #define GPS_SIMULATED_LATITUDE_INSIDE_FENCING 40.622
@@ -59,15 +63,18 @@ const int MAX30102_I2C_ADDR = 0x57
 PwmOut buzzer(PE_5);
 
 void buzzer_turn_on() {
+    buzzer.period(1.0 / 500.0); // Set frequency to 500 Hz (less sharp)
 
-  buzzer.period(1.0 / 1000.0); // Set frequency to 1kHz
-  buzzer.write(0.5);           // 50% duty cycle
+    for (int i = 0; i < SOUND_INTERVAL_ON * 2; i++) { // 7 seconds with 500ms intervals
+        if (i % 2 == 0) {
+            buzzer.write(0.1); // Turn ON buzzer
+        } else {
+            buzzer.write(0.0); // Turn OFF buzzer
+        }
+        ThisThread::sleep_for(500ms);
+    }
 
-  ThisThread::sleep_for(500ms); // Play tone for 500ms
-
-  buzzer.write(0.0); // Turn off buzzer
-
-  ThisThread::sleep_for(500ms); // Wait for 500ms before repeating
+    buzzer.write(0.0); // Ensure buzzer is OFF at the end
 }
 
 void buzzer_turn_off() {
@@ -321,11 +328,64 @@ void init_tickers() {
                           // and the interval (2 seconds)
 }
 
+
+
 void messageArrived(MQTT::MessageData& md)
 {
+
+//buzzer_turn_on();
     MQTT::Message &message = md.message;
+    printf("\n-----------------------------------\r\n");
     printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\r\n", message.qos, message.retained, message.dup, message.id);
     printf("Payload %.*s\r\n", message.payloadlen, (char*)message.payload);
+    
+    
+
+    // Convert payload to a null-terminated string
+    char payload[message.payloadlen + 1];
+    memcpy(payload, message.payload, message.payloadlen);
+    payload[message.payloadlen] = '\0';
+
+    // Extract values using sscanf
+   // Parse JSON using cJSON
+    cJSON *json = cJSON_Parse(payload);
+    if (json == NULL) {
+        printf("Failed to parse JSON\r\n");
+        return;
+    }
+
+    // Extract "speakerDeviceName"
+    cJSON *deviceName = cJSON_GetObjectItem(json, "speakerDeviceName");
+    cJSON *status = cJSON_GetObjectItem(json, "status");
+
+    if (deviceName && deviceName->valuestring && status && (status->type == cJSON_True || status->type == cJSON_False)) {
+        // Check if speakerDeviceName matches "horse sim 10"
+        if (strcmp(deviceName->valuestring, "horse sim 10") == 0) {
+            printf("Valid message received. Status: %s\r\n", status->type == cJSON_True ? "true" : "false");
+            // Perform desired action based on `status->type`
+            if(status->type == cJSON_True){
+                buzzer_turn_on();
+            }
+        } else {
+            printf("Invalid speakerDeviceName\r\n");
+        }
+    } else {
+        printf("JSON does not contain required fields\r\n");
+    }
+
+    cJSON_Delete(json);  // Free memory allocated by cJSON
+printf("\n-----------------------------------\r\n");
+}
+
+
+
+
+ Thread mqtt_thread;
+void mqtt_yield_function(MQTT::Client<MQTTNetwork, Countdown> *client) {
+    while (true) {
+        client->yield(100); // Process MQTT messages
+        ThisThread::sleep_for(100ms);
+    }
 }
 
 int main() {
@@ -461,21 +521,14 @@ int main() {
   result = client.connect(conn_data);
 
   if (result != 0) {
-    printf("Connected  NOT OK %d\n", result);
+    printf("Connected  NOT OK %d\r\n", result);
   } else {
-    printf("Connected OK");
+    printf("Connected OK\r\n");
   }
 
 
 
-//Subscrite to topic in order to turn on the buzzer when needed
-result = client.subscribe(MQTT_SUB_TOPIC, MQTT::QOS2, messageArrived);
 
-if (result != 0) {
-    printf("MQTT subscribe is %d\r\n", result);
-  } else {
-    printf("MQTT subscribe is OK");
-  }
 //         logMessage("rc from MQTT subscribe is %d\r\n", rc);
 // void buzzer_turn_on();
 
@@ -523,6 +576,17 @@ if (result != 0) {
 
   init_tickers();
 
+  //Subscrite to topic in order to turn on the buzzer when needed
+result = client.subscribe(MQTT_SUB_TOPIC, MQTT::QOS1, messageArrived);
+
+if (result != 0) {
+    printf("MQTT subscribe is %d\r\n", result);
+  } else {
+    printf("MQTT subscribe is OK\r\n");
+}
+
+mqtt_thread.start(callback(mqtt_yield_function, &client));
+
   while (true) {
 
     // if (flag_trigger_measurements) {
@@ -530,10 +594,10 @@ if (result != 0) {
     // 3D Gyroscope
 
     // Collect NUM_SAMPLES from the sensor
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-      // max30102.readFIFO(red[i], ir[i]);
-      ThisThread::sleep_for(10ms); // 100Hz sampling
-    }
+    // for (int i = 0; i < NUM_SAMPLES; i++) {
+    //   // max30102.readFIFO(red[i], ir[i]);
+    //   ThisThread::sleep_for(10ms); // 100Hz sampling
+    // }
 
     // Calculate Heart Rate and SpO2
     // max30102.calculateHeartRateAndSpO2(red, ir, NUM_SAMPLES, heart_rate,
@@ -552,6 +616,7 @@ if (result != 0) {
     temperature = 37.8;
     // temperature=(temperature -32) * 5/9 -5;
     sen0344_get_hr_spo2();
+    printf("\n-----------------------------------\r\n");
     printf("HR: %0.3f\n", HR);
     printf("SPO2: %0.3f\n", SPO2);
     printf("HTS221:  [temp] %.2f C, [hum] %.2f \r\n", temperature, hum);
@@ -570,10 +635,12 @@ if (result != 0) {
     size_t payload_len = n;
 
     printf("Msg published to: %s %d %s\r\n", MQTT_HOST, MQTT_PORT, MQTT_TOPIC);
+    
 
     if (client.publish(MQTT_TOPIC, payload, n) < 0) {
       printf("failed to publish MQTT message");
     }
+    printf("\n-----------------------------------\r\n");
     led = !led;
 
     // }

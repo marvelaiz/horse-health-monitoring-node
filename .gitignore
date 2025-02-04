@@ -13,3 +13,4 @@ MQTTPacket
 MAX30102
 HTS221
 beep
+cJSON
